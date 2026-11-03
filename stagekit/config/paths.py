@@ -1,8 +1,11 @@
 """Where the project lives: the directory a run reads its configs from and writes its output to.
 
 The project root is the directory named by the environment variable
-``STAGEKIT_PROJECT_ROOT``, else the nearest of the working directory and
-its parents that holds ``config/config.yaml``. It is looked up on first use
+``STAGEKIT_PROJECT_ROOT``, else the one of the working directory and its
+parents that holds ``config/config.yaml`` — exactly one: with two on the
+way up (an experiment area with its own config directory needs a
+``config.yaml``, stagekit/run/utils.py) the search does not guess, the
+variable must name the root. It is looked up on first use
 of a name below (``PROJECT_ROOT``, ``CONFIG_DIR``,
 ``EXPERIMENTS_CONFIG_DIR``, ``PINS_FILE``), so stagekit imports outside a
 project; using one of these names there raises ``ProjectRootError``.
@@ -20,7 +23,8 @@ MARKER = Path("config") / "config.yaml"
 
 
 class ProjectRootError(RuntimeError):
-    """No project root: the variable is unset and no config/config.yaml is in reach."""
+    """No project root, or more than one: the variable is unset and the search
+    finds no config/config.yaml, or several."""
 
 
 @functools.cache
@@ -29,8 +33,8 @@ def find_project_root() -> Path:
 
     Raises:
         ProjectRootError: If the variable names a directory without
-            ``config/config.yaml``, or it is unset and neither the working
-            directory nor a parent holds one.
+            ``config/config.yaml``, or it is unset and the working directory
+            and its parents hold none, or more than one.
     """
     named = os.environ.get(ENV_VAR)
     if named:
@@ -39,10 +43,15 @@ def find_project_root() -> Path:
             raise ProjectRootError(f"{ENV_VAR}={named} holds no {MARKER}")
         return root
     here = Path.cwd().resolve()
-    for candidate in (here, *here.parents):
-        if (candidate / MARKER).is_file():
-            return candidate
-    raise ProjectRootError(f"no {MARKER} in {here} or a parent, and {ENV_VAR} is not set")
+    found = [c for c in (here, *here.parents) if (c / MARKER).is_file()]
+    if not found:
+        raise ProjectRootError(f"no {MARKER} in {here} or a parent, and {ENV_VAR} is not set")
+    if len(found) > 1:
+        raise ProjectRootError(
+            f"ambiguous project root: {MARKER} in {[str(c) for c in found]} — "
+            f"set {ENV_VAR} to the project's directory"
+        )
+    return found[0]
 
 
 def load_project_env() -> Path | None:

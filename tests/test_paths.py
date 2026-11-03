@@ -38,11 +38,18 @@ def test_the_search_from_an_area_finds_the_project(fresh, monkeypatch):
     assert paths.PINS_FILE == project.resolve() / "published" / "pins.yaml"
 
 
-def test_the_nearest_config_yaml_wins(fresh, monkeypatch):
+def test_two_config_yaml_on_the_way_up_are_refused(fresh, monkeypatch):
+    """An area with its own config directory needs a config.yaml
+    (stagekit/run/utils.py) — the nearest one would make the area the
+    project. The search does not guess; the variable decides."""
     outer = make_project(fresh / "outer")
-    inner = make_project(outer / "inner")
+    inner = make_project(outer / "experiments" / "04-pilot")
     monkeypatch.chdir(inner)
-    assert paths.find_project_root() == inner.resolve()
+    with pytest.raises(paths.ProjectRootError, match=f"ambiguous project root: .* set {paths.ENV_VAR}"):
+        paths.find_project_root()
+    monkeypatch.setenv(paths.ENV_VAR, str(outer))
+    paths.find_project_root.cache_clear()
+    assert paths.find_project_root() == outer.resolve()
 
 
 def test_the_variable_wins_over_the_working_directory(fresh, monkeypatch):
