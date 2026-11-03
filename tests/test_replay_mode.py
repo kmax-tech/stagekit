@@ -182,7 +182,7 @@ def test_the_summary_names_mode_list_and_labkit_run():
     ))
 
     assert run_summary_fields(cfg, {"stage": {}}) == {
-        "llm_cache": {"mode": "replay", "replay_failed_items": ["bigbench:692"]},
+        "llm_cache": {"enabled": True, "mode": "replay", "replay_failed_items": ["bigbench:692"]},
         "labkit_run_id": "run-1",
     }
     assert run_summary_fields(AppConfig(), {})["labkit_run_id"] is None

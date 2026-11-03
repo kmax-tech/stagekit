@@ -484,6 +484,11 @@ python -m scripts.build_dataset hong
   `CacheMiss` naming item and key, except items listed in `meta.replay_failed_items` —
   the replayed run's own failed items — which count as failed). The mode, the list and
   `meta.labkit_run_id` land in `pipeline_summary.json`; none enters the repro hash.
+- Backend `labkit` (`stagekit/models/backends/labkit_backend.py`): `model_name` is a
+  labkit `models.toml` alias; calls go through labkit's cache of raw answers when the
+  caller binds one (`answers_through(Cache(run, replay=…))`), otherwise uncached. Run it
+  with `meta.enable_cache=false` (no second, parsed store) and `meta.max_retries=0` (a
+  retry would read the same stored answer); the cache mode is in the labkit record.
 
 ---
 

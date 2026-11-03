@@ -233,9 +233,11 @@ def run_pipeline(cfg: AppConfig):
 def run_summary_fields(cfg: AppConfig, stage_metrics: dict) -> dict:
     """The run's own entries in pipeline_summary.json, beside each stage's metrics.
 
-    ``llm_cache``: how the run used the LLM cache (``meta.cache_mode``) and,
-    in a replay, the items it counted as failed instead of stopping
-    (``meta.replay_failed_items``). ``labkit_run_id``: the labkit run this
+    ``llm_cache``: whether the run used stagekit's LLM cache
+    (``meta.enable_cache``), how (``meta.cache_mode``) and, in a replay, the
+    items it counted as failed instead of stopping
+    (``meta.replay_failed_items``). A run on the labkit backend keeps its
+    cache mode in the labkit run's record (``llm-cache.json``). ``labkit_run_id``: the labkit run this
     pipeline ran inside, None outside one.
 
     Raises:
@@ -244,6 +246,7 @@ def run_summary_fields(cfg: AppConfig, stage_metrics: dict) -> dict:
     """
     fields = {
         "llm_cache": {
+            "enabled": cfg.meta.enable_cache,
             "mode": cfg.meta.cache_mode,
             "replay_failed_items": list(cfg.meta.replay_failed_items),
         },

@@ -10,6 +10,7 @@ BACKEND_MODULE_MAP = {
     "vllm": "stagekit.models.backends.vllm_backend",
     "claude_cli": "stagekit.models.backends.cli_backend",
     "codex_cli": "stagekit.models.backends.cli_backend",
+    "labkit": "stagekit.models.backends.labkit_backend",
 }
 
 # ModelConfig fields whose identity-relevance depends on the backend, with
@@ -56,6 +57,10 @@ BACKEND_CAPABILITIES = {
     # CLI backends have no temperature flag, and no token/reasoning knobs.
     "claude_cli": {"identity_fields": frozenset()},
     "codex_cli": {"identity_fields": frozenset()},
+    # labkit sends the temperature it is given; the rest of the call (token
+    # cap, num_ctx, endpoints) is the models.toml alias, keyed in labkit's
+    # cache by llm.identity — for ollama with the weights' digest.
+    "labkit": {"identity_fields": frozenset({"temperature"})},
 }
 
 _missing = set(BACKEND_MODULE_MAP) - set(BACKEND_CAPABILITIES)

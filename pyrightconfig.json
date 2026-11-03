@@ -2,10 +2,11 @@
     "include": ["stagekit", "tests"],
     "exclude": ["**/__pycache__"],
     "typeCheckingMode": "basic",
+    "extraPaths": ["../labkit"],
     "executionEnvironments": [
         {
             "root": "tests",
-            "extraPaths": ["."],
+            "extraPaths": [".", "../labkit"],
             "reportArgumentType": "none",
             "reportAttributeAccessIssue": "none",
             "reportOptionalMemberAccess": "none",
