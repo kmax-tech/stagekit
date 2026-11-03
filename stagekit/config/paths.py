@@ -6,11 +6,14 @@ its parents that holds ``config/config.yaml``. It is looked up on first use
 of a name below (``PROJECT_ROOT``, ``CONFIG_DIR``,
 ``EXPERIMENTS_CONFIG_DIR``, ``PINS_FILE``), so stagekit imports outside a
 project; using one of these names there raises ``ProjectRootError``.
+The project's ``.env`` is the one in that root (``load_project_env``).
 """
 
 import functools
 import os
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 ENV_VAR = "STAGEKIT_PROJECT_ROOT"
 MARKER = Path("config") / "config.yaml"
@@ -40,6 +43,30 @@ def find_project_root() -> Path:
         if (candidate / MARKER).is_file():
             return candidate
     raise ProjectRootError(f"no {MARKER} in {here} or a parent, and {ENV_VAR} is not set")
+
+
+def load_project_env() -> Path | None:
+    """Load ``<project root>/.env`` (backend addresses, keys) into the environment.
+
+    Its values override variables already set. The root is the one
+    ``find_project_root`` finds, so the variable and the search apply to
+    the ``.env`` as well; a ``.env`` in a subdirectory of the project (an
+    experiment area) is not read.
+
+    Returns:
+        The file loaded, or None when stagekit runs outside a project (no
+        root — importing stagekit there is allowed) or the project has no
+        ``.env``.
+    """
+    try:
+        root = find_project_root()
+    except ProjectRootError:
+        return None
+    env = root / ".env"
+    if not env.is_file():
+        return None
+    load_dotenv(env, override=True)
+    return env
 
 
 #: name -> its path below the project root

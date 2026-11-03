@@ -1,9 +1,8 @@
 import logging
 from pathlib import Path
 
-from dotenv import find_dotenv, load_dotenv
-
 from stagekit.config.classes import AppConfig
+from stagekit.config.paths import load_project_env
 from stagekit.pipeline.executor import PipelineExecutor
 from stagekit.run.manager import RunManager
 from stagekit.run.context import RunContext
@@ -14,11 +13,9 @@ from stagekit.utils.serialization import save_json
 
 logger = logging.getLogger(__name__)
 
-# The project's .env (backend addresses, keys): searched from the working
-# directory upward, as the project root is (stagekit/config/paths.py).
-# Without usecwd the search starts at this file — the stagekit checkout,
-# not the project — and finds nothing.
-load_dotenv(find_dotenv(usecwd=True), override=True)
+# The project's .env (backend addresses, keys), in its root
+# (stagekit/config/paths.py). Without a project there is none to load.
+load_project_env()
 
 
 def _setup_logging() -> None:
