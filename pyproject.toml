@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,8 @@ name = "stagekit"
 version = "0.1.0"
 description = "Stages, a DAG executor, registries open to topics, repro hashes, run index and pins for research pipelines."
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 # Lower bounds: the versions fallacy-detection runs with (requirements-lock.txt, 2026-11-03).
 dependencies = [
     "hydra-core>=1.3.2",
