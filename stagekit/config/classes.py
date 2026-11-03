@@ -208,6 +208,16 @@ class MetaConfig:
 
     enable_cache: bool = True
     cache_dir: str = "data/cache/llm"
+    # How the LLM cache is used: "normal" | "replay"
+    # (stagekit/models/llm_cache.py, CACHE_MODES). A replay needs the cache.
+    cache_mode: str = "normal"
+    # Replay only: items the replayed run itself lists as failed (its
+    # llm_stats failed_items). Their misses count as failed items instead
+    # of stopping the run. Passed by the caller, never written in stagekit.
+    replay_failed_items: List[str] = field(default_factory=list)
+    # The labkit run this pipeline runs inside, if any; written to
+    # pipeline_summary.json so the two records name each other.
+    labkit_run_id: str = ""
     prompt_nbr: int = 1
     max_workers: int = 50
     max_retries: int = 10

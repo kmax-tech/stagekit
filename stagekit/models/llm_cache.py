@@ -24,6 +24,20 @@ logger = logging.getLogger(__name__)
 ENTRY_SLOT_SECTIONS: tuple[str, ...] = ("answers", "raw", "thinking")
 
 
+#: How a run uses the cache (``MetaConfig.cache_mode``), named as labkit's
+#: (``labkit.run.llm_cache.Mode``). ``normal``: a hit is read, a miss calls
+#: the backend and is stored. ``replay``: only reads — no backend is built
+#: or called; a miss raises :class:`CacheMiss`, except for the items the
+#: run lists in ``MetaConfig.replay_failed_items``, whose misses count as
+#: failed items, as in the run being replayed.
+CACHE_MODES: tuple[str, ...] = ("normal", "replay")
+
+
+class CacheMiss(LookupError):
+    """A replay asked for an answer the cache does not hold; no backend was
+    called. Stops the run: in a replay a miss is a finding, not a call."""
+
+
 class CacheCorruptionError(RuntimeError):
     """A cache file exists but cannot be parsed as valid cache data.
 

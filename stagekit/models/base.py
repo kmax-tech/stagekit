@@ -13,9 +13,9 @@ from tqdm import tqdm
 
 from stagekit.config.classes import ModelConfig
 from stagekit.models.backends.backends_base import BackendContractError
-from stagekit.models.llm_cache import CacheCorruptionError
+from stagekit.models.llm_cache import CacheCorruptionError, CacheMiss
 from stagekit.models.backends.factory import (
-    BACKEND_CONDITIONAL_FIELDS, backend_consumes,
+    BACKEND_CONDITIONAL_FIELDS, BACKEND_REGISTRY, backend_consumes,
 )
 from stagekit.models.backends.factory import build_backend
 from stagekit.parsers.base import BaseResponseParser
@@ -177,7 +177,9 @@ class LLMRunStats:
 @dataclass
 class LLMCallResult:
     value: Optional[Any] = None
-    source: str = "llm"              # "cache" | "llm"
+    # "cache" | "llm" | "replay" — the last: a miss in a replay for an item
+    # the replayed run lists as failed; nothing was read, nothing called.
+    source: str = "llm"
     success: bool = False
     attempts: int = 0
     error: Optional[str] = None
@@ -257,6 +259,29 @@ class _AttemptResult:
 
 
 # ============================================================
+# The backend's stand-in in a replay
+# ============================================================
+class _ReplayBackend:
+    """Stands in for the backend when ``meta.cache_mode`` is ``replay``.
+
+    Carries the backend's name, which keys the cache, and refuses every
+    call. ``_execute_llm_call`` answers a replay before any attempt, so a
+    call reaching this is a bug in that path, not a miss.
+    """
+
+    max_safe_workers = None
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def generate(self, prompt: str):
+        raise CacheMiss(
+            f"replay: backend {self.name!r} was asked for an answer — a "
+            f"replay calls no backend"
+        )
+
+
+# ============================================================
 # LLM base model
 # ============================================================
 #
@@ -291,7 +316,14 @@ class LLMBaseModel(BaseModel, ABC):
         super().__init__(model_cfg, llm_task_cfg, meta_cfg)
         self.llm_stats = LLMRunStats()
         self.cache = None
-        self.backend = build_backend(self.model_cfg)
+        # A replay builds no backend: building one reaches for the server
+        # (the ollama backend checks and pulls the model on creation).
+        if meta_cfg is not None and meta_cfg.cache_mode == "replay":
+            self.backend = _ReplayBackend(
+                BACKEND_REGISTRY.get(self.model_cfg.backend).name,
+            )
+        else:
+            self.backend = build_backend(self.model_cfg)
 
     # --------------------------------------------------
     # Core execution (single LLM call with cache + retries)
@@ -342,10 +374,19 @@ class LLMBaseModel(BaseModel, ABC):
             sample_slot=sample_slot,
         )
 
+        replay = self.meta_cfg.cache_mode == "replay"
+        if replay and self.cache is None:
+            raise RuntimeError(
+                "meta.cache_mode='replay' but the cache is off "
+                "(meta.enable_cache) — a replay reads every answer from it"
+            )
+
         # Check cache
         cached = self._check_cache(ctx)
         if cached is not None:
             return LLMCallResult(value=cached, source="cache", success=True, attempts=0)
+        if replay:
+            return self._replay_miss(ctx)
 
         # Retry loop
         last_raw = ""
@@ -474,6 +515,40 @@ class LLMBaseModel(BaseModel, ABC):
         if cached is not None:
             self.llm_stats.record_cache_hit()
         return cached
+
+    def _replay_miss(self, ctx: _LLMCallContext) -> LLMCallResult:
+        """A miss in a replay: a listed item counts as failed, any other stops.
+
+        Listed means in ``meta.replay_failed_items`` — items the replayed run
+        itself gave up on, so it stored no answer for them. They are recorded
+        as failed items, as that run recorded them; no attempt is made.
+
+        Raises:
+            CacheMiss: The item is not listed — naming item and key.
+        """
+        assert self.meta_cfg is not None and self.cache is not None  # _execute_llm_call
+        item = None if ctx.item_id is None else str(ctx.item_id)
+        if item is not None and item in self.meta_cfg.replay_failed_items:
+            self.llm_stats.record_failed_item(ctx.backend_name, item)
+            logger.warning(
+                "REPLAY: no cache entry for item %s, listed as failed in the "
+                "replayed run (meta.replay_failed_items) — counted as failed",
+                item,
+            )
+            return LLMCallResult(
+                value=None, source="replay", success=False, attempts=0,
+                error="listed as failed in the replayed run "
+                      "(meta.replay_failed_items)",
+                error_type="replay_listed_failure",
+            )
+        raise CacheMiss(
+            f"replay: no cache entry for item {item!r} — key {ctx.cache_key}, "
+            f"slot {ctx.cache_slot}, dataset {ctx.cache_dataset_id}, parser "
+            f"{ctx.parser_id}, prompt version {ctx.prompt_version}, backend "
+            f"{ctx.backend_name}, in {self.cache.cache_dir}. A replay calls no "
+            f"backend; list the item in meta.replay_failed_items only if the "
+            f"replayed run itself failed it"
+        )
 
     def _parse_and_diagnose(
         self, ctx: _LLMCallContext, attempt: int, raw: str,
@@ -633,10 +708,11 @@ class LLMBaseModel(BaseModel, ABC):
             self.llm_stats.record_parse_failure(ctx.parser_id)
             return _AttemptResult(raw=raw, error=error, error_type="parse_failure")
 
-        except CacheCorruptionError:
+        except (CacheCorruptionError, CacheMiss):
             # Infrastructure failure, not an LLM failure: retrying cannot
             # help, and every item hitting the shard would fail the same
-            # way. Propagate so the batch aborts fail-fast.
+            # way. Propagate so the batch aborts fail-fast. CacheMiss: the
+            # replay stand-in was called, which _execute_llm_call rules out.
             raise
         except Exception as e:
             error_type = self._classify_backend_error(e)

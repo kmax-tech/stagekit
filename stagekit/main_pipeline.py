@@ -215,7 +215,10 @@ def run_pipeline(cfg: AppConfig):
         raise
 
     # 6. Save Summary
-    save_json(all_metrics, run_manager.run_dir / "pipeline_summary.json")
+    save_json(
+        {**all_metrics, **run_summary_fields(cfg, all_metrics)},
+        run_manager.run_dir / "pipeline_summary.json",
+    )
     if run_manager.tracker:
         run_manager.tracker.log_artifact(
             run_manager.run_dir / "pipeline_summary.json",
@@ -225,6 +228,34 @@ def run_pipeline(cfg: AppConfig):
     logger.info("Pipeline complete -> %s", run_manager.run_dir)
     run_manager.finish()
     return run_manager.run_dir
+
+
+def run_summary_fields(cfg: AppConfig, stage_metrics: dict) -> dict:
+    """The run's own entries in pipeline_summary.json, beside each stage's metrics.
+
+    ``llm_cache``: how the run used the LLM cache (``meta.cache_mode``) and,
+    in a replay, the items it counted as failed instead of stopping
+    (``meta.replay_failed_items``). ``labkit_run_id``: the labkit run this
+    pipeline ran inside, None outside one.
+
+    Raises:
+        ValueError: A stage's name is one of these keys — its metrics would
+            be overwritten.
+    """
+    fields = {
+        "llm_cache": {
+            "mode": cfg.meta.cache_mode,
+            "replay_failed_items": list(cfg.meta.replay_failed_items),
+        },
+        "labkit_run_id": cfg.meta.labkit_run_id or None,
+    }
+    clash = sorted(set(fields) & set(stage_metrics))
+    if clash:
+        raise ValueError(
+            f"pipeline_summary.json: stage name(s) {clash} collide with the "
+            f"run's own entries — rename the stage(s)"
+        )
+    return fields
 
 
 def _finalize_failed_run(

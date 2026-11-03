@@ -106,6 +106,7 @@ def validate_app_config(cfg: AppConfig) -> None:
     errors: list[str] = []
 
     _check_fields_the_topic_sets(cfg, errors)
+    _check_meta_config(cfg, errors)
     _check_data_config(cfg, errors)
     _check_model_config(cfg, errors)
     _check_llm_task_config(cfg, errors)
@@ -162,6 +163,26 @@ def _check_fields_the_topic_sets(cfg: AppConfig, errors: list[str]) -> None:
                 f"{dotted} is not set — the framework has no default for it; "
                 f"the topic's config.yaml sets it"
             )
+
+
+def _check_meta_config(cfg: AppConfig, errors: list[str]) -> None:
+    from stagekit.models.llm_cache import CACHE_MODES
+    meta = cfg.meta
+    if meta.cache_mode not in CACHE_MODES:
+        errors.append(
+            f"meta.cache_mode='{meta.cache_mode}' is not a cache mode "
+            f"(available: {list(CACHE_MODES)})"
+        )
+    if meta.cache_mode == "replay" and not meta.enable_cache:
+        errors.append(
+            "meta.cache_mode='replay' with meta.enable_cache=false — a replay "
+            "reads every answer from the cache"
+        )
+    if meta.replay_failed_items and meta.cache_mode != "replay":
+        errors.append(
+            f"meta.replay_failed_items is set but meta.cache_mode="
+            f"'{meta.cache_mode}' — the list applies to a replay only"
+        )
 
 
 def _check_data_config(cfg: AppConfig, errors: list[str]) -> None:

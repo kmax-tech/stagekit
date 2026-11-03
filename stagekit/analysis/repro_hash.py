@@ -36,6 +36,7 @@ _UNVERSIONED = re.compile(r"[0-9a-f]{64}")
 _VOLATILE_META = frozenset({
     "run_id", "timestamp", "run_name", "run_group",
     "max_workers", "max_retries", "enable_cache", "cache_dir",
+    "cache_mode", "replay_failed_items", "labkit_run_id",
     "save_raw", "store_parse_diagnostics", "store_only_failed_parses",
     "enable_pipeline_outputs", "max_parse_diagnostics_per_stage",
 })
