@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stagekit"
+version = "0.1.0"
+description = "Stages, a DAG executor, registries open to topics, repro hashes, run index and pins for research pipelines."
+requires-python = ">=3.11"
+# Lower bounds: the versions fallacy-detection runs with (requirements-lock.txt, 2026-11-03).
+dependencies = [
+    "hydra-core>=1.3.2",
+    "omegaconf>=2.3.0",
+    "json_repair>=0.58.7",
+    "numpy>=2.3.4",
+    "ollama>=0.6.1",
+    "openai>=2.8.0",
+    "python-dotenv>=1.2.1",
+    "PyYAML>=6.0.3",
+    "requests>=2.32.5",
+    "tqdm>=4.67.1",
+]
+
+[project.optional-dependencies]
+bert = ["torch>=2.9.1", "transformers>=4.57.1"]
+tracking = ["mlflow>=3.7.0", "wandb>=0.23.1"]
+
+[tool.setuptools.packages.find]
+include = ["stagekit*"]
+
+[tool.ruff]
+extend-exclude = []
+
+[tool.ruff.lint]
+# E402: lazy imports of heavy dependencies (see stagekit/pipeline/registry.py).
+ignore = ["E402"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

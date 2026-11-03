@@ -1,0 +1,20 @@
+{
+    "include": ["stagekit", "tests"],
+    "exclude": ["**/__pycache__"],
+    "typeCheckingMode": "basic",
+    "executionEnvironments": [
+        {
+            "root": "tests",
+            "extraPaths": ["."],
+            "reportArgumentType": "none",
+            "reportAttributeAccessIssue": "none",
+            "reportOptionalMemberAccess": "none",
+            "reportOptionalSubscript": "none",
+            "reportIndexIssue": "none",
+            "reportCallIssue": "none",
+            "reportTypedDictNotRequiredAccess": "none",
+            "reportInvalidTypeArguments": "none",
+            "reportOptionalIterable": "none"
+        }
+    ]
+}
