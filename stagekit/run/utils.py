@@ -130,7 +130,7 @@ def make_run_context(
     run_type: str,
     group: str | None = None,
 ) -> RunContext:
-    base = Path(cfg.output_dir) / run_type
+    base = s.project_path(cfg.output_dir) / run_type
     if group:
         base = base / group
 

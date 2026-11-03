@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 
 from stagekit.config.classes import AppConfig
-from stagekit.config.paths import load_project_env
+from stagekit.config.paths import load_project_env, project_path
 from stagekit.pipeline.executor import PipelineExecutor
 from stagekit.run.manager import RunManager
 from stagekit.run.context import RunContext
@@ -172,7 +172,7 @@ def run_pipeline(cfg: AppConfig):
             logger.info("Loading file: %s", file_path)
             from stagekit.utils.serialization import load_jsonl, load_json
 
-            fp = Path(file_path)
+            fp = project_path(file_path)
             if not fp.exists():
                 raise FileNotFoundError(f"Input file not found: {fp}")
 

@@ -1,7 +1,7 @@
 # stagekit/models/llm_model.py
 
-from pathlib import Path
 
+from stagekit.config.paths import project_path
 from stagekit.models.base import LLMBaseModel
 from stagekit.models.registry import register_model
 from stagekit.parsers.registry import get_parser
@@ -37,7 +37,6 @@ class GenericLLMModel(LLMBaseModel):
         # Cache — independent of llm_task
         # -----------------------------
         if meta_cfg and meta_cfg.enable_cache:
-            cache_dir = Path(meta_cfg.cache_dir)
-            self.cache = LLMCache.get(cache_dir)
+            self.cache = LLMCache.get(project_path(meta_cfg.cache_dir))
         else:
             self.cache = None

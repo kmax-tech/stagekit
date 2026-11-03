@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from stagekit.config.classes import AppConfig, PipelineStageConfig
+from stagekit.config.paths import project_path
 from stagekit.models.base import BaseModel, LLMBaseModel, LLMCallResult
 from stagekit.prompts.debug_utils import save_rendered_prompt_debug
 from stagekit.utils.serialization import load_json, load_jsonl
@@ -112,7 +113,8 @@ class PipelineStage:
     # (_check_stage_paths). Declared HERE, on the stage that owns the key —
     # a central list in validation.py drifted (taxonomy_path was missed).
     # input keys must exist (file or dir); output keys are created by the
-    # stage, so only their parent directory must exist.
+    # stage, so only their parent directory must exist. get_config() hands
+    # both out resolved below the project root (config.paths.project_path).
     input_path_config_keys: List[str] = []
     output_path_config_keys: List[str] = []
 
@@ -272,10 +274,16 @@ class PipelineStage:
     # Config helpers
     # ------------------------------------------------------------------
     def get_config(self, stage_cfg: Optional[PipelineStageConfig] = None) -> dict:
-        """Extract config_override from stage config, defaulting to empty dict."""
+        """The stage's config_override (empty without one), its declared path
+        keys (``input_path_keys``, ``output_path_keys``) resolved below the
+        project root (``project_path``) — a copy; the config keeps its text."""
         if stage_cfg is None:
             return {}
-        return stage_cfg.config_override or {}
+        co = dict(stage_cfg.config_override or {})
+        for key in self.input_path_keys() | self.output_path_keys():
+            if co.get(key):
+                co[key] = str(project_path(co[key]))
+        return co
 
     def get_provides_enrichments(
         self,

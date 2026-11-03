@@ -1,8 +1,8 @@
 from typing import Dict, Type
-from pathlib import Path
 from warnings import warn
 
 from stagekit.config.classes import DataConfig
+from stagekit.config.paths import project_path
 from stagekit.splits.manager import SplitManager
 from stagekit.data_loader.base import BaseDataLoader, Dataset
 from stagekit.utils.registry import LazyRegistry
@@ -56,7 +56,7 @@ def load_dataset(data_cfg: DataConfig) -> Dataset:
     # --------------------------------------------------
     # Normal path: persisted split
     # --------------------------------------------------
-    split_mgr = SplitManager(Path(data_cfg.split_dir))
+    split_mgr = SplitManager(project_path(data_cfg.split_dir))
     split = split_mgr.load(data_cfg.split_id, dataset=dataset)
 
     dataset.train_idx = split.get("train_idx", [])

@@ -10,6 +10,9 @@ of a name below (``PROJECT_ROOT``, ``CONFIG_DIR``,
 ``EXPERIMENTS_CONFIG_DIR``, ``PINS_FILE``), so stagekit imports outside a
 project; using one of these names there raises ``ProjectRootError``.
 The project's ``.env`` is the one in that root (``load_project_env``).
+A relative path in a config (``data.dataset_path``, ``meta.cache_dir``, a
+stage's declared path keys) means a path below that root, wherever the run
+was started (``project_path``).
 """
 
 import functools
@@ -76,6 +79,22 @@ def load_project_env() -> Path | None:
         return None
     load_dotenv(env, override=True)
     return env
+
+
+def project_path(path: str | Path) -> Path:
+    """PATH as a config means it: a relative path below the project root
+    (``find_project_root``), not below the working directory; an absolute
+    path unchanged.
+
+    Called where a path is used, never written back: the config keeps its
+    text, which is what the repro hash reads.
+
+    Raises:
+        ProjectRootError: For a relative path when there is no project root,
+            or more than one.
+    """
+    path = Path(path)
+    return path if path.is_absolute() else find_project_root() / path
 
 
 #: name -> its path below the project root

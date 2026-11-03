@@ -26,6 +26,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from stagekit.config.paths import project_path
 from stagekit.utils.registry import LazyRegistry
 
 if TYPE_CHECKING:
@@ -465,14 +466,14 @@ def _check_data_paths(cfg: AppConfig, errors: list[str]) -> None:
     mode = cfg.data.mode
 
     if mode == "file" and cfg.data.file_path:
-        fp = Path(cfg.data.file_path)
+        fp = project_path(cfg.data.file_path)
         if not fp.exists():
             errors.append(f"data.file_path does not exist: {fp}")
 
     if mode == "dataset" and cfg.data.dataset_path:
         # dataset_path can be a logical name (handled by data_loader) or a
         # real path.  Only check if it looks like a filesystem path.
-        dp = Path(cfg.data.dataset_path)
+        dp = project_path(cfg.data.dataset_path)
         if dp.suffix and not dp.exists():
             errors.append(f"data.dataset_path does not exist: {dp}")
 
@@ -521,7 +522,7 @@ def _check_stage_paths(cfg: AppConfig, errors: list[str]) -> None:
         # input keys: must exist (file or directory)
         for key in sorted(stage_cls.input_path_keys()):
             value = co.get(key)
-            if value and not Path(value).exists():
+            if value and not project_path(value).exists():
                 errors.append(
                     f"stage '{stage.name}': {key} does not exist: {value}"
                 )
@@ -529,8 +530,8 @@ def _check_stage_paths(cfg: AppConfig, errors: list[str]) -> None:
         # output keys: the stage creates the file; parent dir must exist
         for key in sorted(stage_cls.output_path_keys()):
             value = co.get(key)
-            if value and not Path(value).parent.exists():
+            if value and not project_path(value).parent.exists():
                 errors.append(
                     f"stage '{stage.name}': {key} parent directory "
-                    f"does not exist: {Path(value).parent}"
+                    f"does not exist: {project_path(value).parent}"
                 )
