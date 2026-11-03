@@ -479,6 +479,11 @@ python -m scripts.build_dataset hong
 - NEVER build prompts as inline Python strings or read prompt files directly in a stage.
 - LLM cache key = (prompt text, model, temperature, parser class, template hash) — cached
   under `data/cache/llm/<experiment_name or task_name>/`. Changing prompt text invalidates.
+- `meta.cache_mode`: `normal` (a miss calls the backend, the answer is stored) or
+  `replay` (every answer from the cache; no backend built or called; a miss raises
+  `CacheMiss` naming item and key, except items listed in `meta.replay_failed_items` —
+  the replayed run's own failed items — which count as failed). The mode, the list and
+  `meta.labkit_run_id` land in `pipeline_summary.json`; none enters the repro hash.
 
 ---
 
