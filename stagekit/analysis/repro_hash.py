@@ -15,8 +15,22 @@ changed on purpose eight times since 2026-05-20 without saying so
 (stagekit plan, step 0: 39 of 44 pins no longer recompute to their stored
 hash). Two hashes of different versions are not compared: the runs may
 be equivalent, the formula cannot tell. A stored hash is never rewritten
-— it is the run's identity of its time. Change ``REPRO_HASH_VERSION``
-whenever ``_build_canonical`` or what it reads changes.
+— it is the run's identity of its time. Add a new version (and keep the
+old one computable) whenever a canon builder or what it reads changes.
+
+Formulas that can still be computed:
+
+- **2** (2026-11-03): the canon of 2026-09-24 — every schema field a
+  config carries enters, except the listed volatile ones. A field that
+  left the schema since a run was stored, or one added since (at its
+  empty default), therefore changes the stored config's hash.
+- **3** (2026-11-04): identity = only what can affect output (NOTES.md
+  2026-07-04), applied to the schema as well: a key enters only if it is
+  a field of today's schema and differs from that field's default. A
+  field that left the schema and one added at its default no longer
+  move the hash. Formula 3 reads today's defaults: changing the default
+  of a field that enters the canon is a formula change (new version;
+  ``tests/test_repro_hash_v3.py`` freezes the defaults and goes red).
 """
 
 from __future__ import annotations
@@ -24,10 +38,12 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import asdict
+from dataclasses import MISSING, asdict, fields
+from typing import Any, Callable
 
-#: Version of the formula below (see the module docstring); 1 = unprefixed.
-REPRO_HASH_VERSION = 2
+#: Version of the formula new hashes are made with (see the module
+#: docstring); 1 = unprefixed.
+REPRO_HASH_VERSION = 3
 
 _VERSIONED = re.compile(r"v(\d+)-[0-9a-f]{64}")
 _UNVERSIONED = re.compile(r"[0-9a-f]{64}")
@@ -174,8 +190,12 @@ def instrument_snapshot(cfg_dict: dict) -> dict:
     return snap
 
 
-def _build_canonical(cfg_dict: dict) -> dict:
-    """Extract identity-determining fields into a canonical structure."""
+def _build_canonical_v2(cfg_dict: dict) -> dict:
+    """Formula 2: identity-determining fields into a canonical structure.
+
+    Frozen: stored v2 hashes recompute with it. Changes go into a new
+    version.
+    """
     canon = {}
 
     # Meta: only identity fields
@@ -212,27 +232,136 @@ def _build_canonical(cfg_dict: dict) -> dict:
     # Seed
     canon["random_state"] = cfg_dict.get("random_state", 42)
 
-    # Instrument: the stored snapshot if the run wrote one (so a stored
-    # config hashes the same whatever the registries say today),
-    # otherwise resolved live from the registries (a config about to run).
-    instrument = cfg_dict.get("instrument")
-    if instrument is None:
-        instrument = instrument_snapshot(cfg_dict)
+    instrument = _instrument(cfg_dict)
     if instrument:
         canon["instrument"] = instrument
 
     return canon
 
 
-def repro_hash_from_dict(cfg_dict: dict) -> str:
+def _instrument(cfg_dict: dict) -> dict:
+    """The stored snapshot if the run wrote one (so a stored config hashes
+    the same whatever the registries say today), otherwise resolved live
+    from the registries (a config about to run)."""
+    instrument = cfg_dict.get("instrument")
+    if instrument is None:
+        instrument = instrument_snapshot(cfg_dict)
+    return instrument
+
+
+_NO_DEFAULT = object()
+
+
+def _defaults(cls) -> dict[str, Any]:
+    """Each field of the dataclass *cls* with its default (``_NO_DEFAULT``
+    for a field that has none, so it always differs)."""
+    out: dict[str, Any] = {}
+    for f in fields(cls):
+        if f.default is not MISSING:
+            out[f.name] = f.default
+        elif f.default_factory is not MISSING:
+            out[f.name] = f.default_factory()
+        else:
+            out[f.name] = _NO_DEFAULT
+    return out
+
+
+def _identity_subset(section: dict, cls, volatile: frozenset[str] = frozenset()) -> dict:
+    """The keys of *section* that formula 3 counts as identity.
+
+    A key counts if it is a field of today's *cls*, is not *volatile*, and
+    differs from the field's default. A key that is no field (any more)
+    and a field at its default drop out: a run stored before a field was
+    added (it lacks the key) and one composed after (it carries the
+    default) hash alike, as do a run stored with a field since removed and
+    one composed without it.
+    """
+    defaults = _defaults(cls)
+    return {
+        k: v for k, v in section.items()
+        if k in defaults and k not in volatile and v != defaults[k]
+    }
+
+
+def _build_canonical_v3(cfg_dict: dict) -> dict:
+    """Formula 3: formula 2's sections, each reduced by ``_identity_subset``.
+
+    Sections and volatile keys are formula 2's. ``resume_from``,
+    ``component_label2id`` and the empty ``derived_artifacts`` need no
+    rule of their own here: the first two are no fields any more, the
+    third is its default.
+    """
+    from stagekit.config.classes import (
+        AppConfig, DataConfig, LLMConfig, MetaConfig, ModelConfig,
+        PipelineConfig, PipelineStageConfig,
+    )
+
+    canon: dict = {
+        "meta": _identity_subset(cfg_dict.get("meta") or {}, MetaConfig, _VOLATILE_META),
+        "data": _identity_subset(cfg_dict.get("data") or {}, DataConfig),
+    }
+    # model / llm_task: None means "no global fallback", which differs from
+    # a section at its defaults — so a present section enters, even empty.
+    if cfg_dict.get("model") is not None:
+        canon["model"] = _identity_subset(_model_canon(cfg_dict["model"]), ModelConfig)
+    if cfg_dict.get("llm_task") is not None:
+        canon["llm_task"] = _identity_subset(cfg_dict["llm_task"], LLMConfig)
+
+    pipeline = dict(cfg_dict.get("pipeline") or {})
+    pipeline["stages"] = [
+        _identity_subset(s, PipelineStageConfig, _VOLATILE_STAGE)
+        for s in pipeline.get("stages") or []
+    ]
+    canon["pipeline"] = _identity_subset(pipeline, PipelineConfig)
+
+    canon.update(_identity_subset(
+        {k: cfg_dict[k] for k in ("random_state",) if k in cfg_dict}, AppConfig,
+    ))
+
+    instrument = _instrument(cfg_dict)
+    if instrument:
+        canon["instrument"] = instrument
+
+    return canon
+
+
+_CANON_BUILDERS: dict[int, Callable[[dict], dict]] = {
+    2: _build_canonical_v2,
+    3: _build_canonical_v3,
+}
+
+
+def _build_canonical(cfg_dict: dict) -> dict:
+    """The canon today's formula (``REPRO_HASH_VERSION``) hashes."""
+    return _CANON_BUILDERS[REPRO_HASH_VERSION](cfg_dict)
+
+
+def repro_hash_from_dict(cfg_dict: dict, version: int = REPRO_HASH_VERSION) -> str:
     """Compute reproducibility hash from a config dict (e.g. loaded from YAML).
 
-    Returns ``v<REPRO_HASH_VERSION>-<sha256 hex>``.
+    Args:
+        cfg_dict: A stored or current config dict.
+        version: The formula to use; today's by default. An older one
+            recomputes a stored hash of its time.
+
+    Returns:
+        ``v<version>-<sha256 hex>``.
+
+    Raises:
+        ValueError: If *version* names no formula that can be computed —
+            formula 1 cannot: it was eight formulas, none recorded.
     """
-    canon = _build_canonical(cfg_dict)
-    raw = json.dumps(canon, sort_keys=True, default=str)
+    try:
+        build = _CANON_BUILDERS[version]
+    except KeyError:
+        raise ValueError(
+            f"repro hash formula {version} cannot be computed "
+            f"(computable: {sorted(_CANON_BUILDERS)}; formula 1 was eight "
+            f"unrecorded formulas)"
+        ) from None
+    raw = json.dumps(build(cfg_dict), sort_keys=True, default=str)
     digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-    return f"v{REPRO_HASH_VERSION}-{digest}"
+    return f"v{version}-{digest}"
 
 
 def repro_hash_version(repro_hash: str) -> int:
