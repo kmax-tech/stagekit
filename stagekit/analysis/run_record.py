@@ -25,6 +25,10 @@ class PipelineFields:
     llm_task_name: Optional[str] = None
     llm_template: Optional[str] = None
     repro_hash: str = ""
+    # Today's formula over the stored config_used.yaml; "" when the
+    # snapshot carries no instrument (stored before 2026-09-24), whose
+    # prompt versions today's registries would only guess.
+    recomputed_repro_hash: str = ""
     completed_stages: tuple[str, ...] = ()
     total_stages: int = 0
 

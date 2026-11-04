@@ -117,6 +117,7 @@ def _load_pipeline_record(
     repro_hash = cfg.get("repro_hash", "") if cfg else ""
     if not repro_hash and cfg:
         repro_hash = repro_hash_from_dict(cfg)
+    recomputed = repro_hash_from_dict(cfg) if cfg and "instrument" in cfg else ""
 
     return RunRecord(
         run_type=manifest.get("run_type", "pipeline"),
@@ -135,6 +136,7 @@ def _load_pipeline_record(
             llm_task_name=llm_task_name,
             llm_template=llm_template,
             repro_hash=repro_hash,
+            recomputed_repro_hash=recomputed,
             completed_stages=tuple(status_data.get("completed_stages", [])),
             total_stages=status_data.get("total_stages", 0),
         ),

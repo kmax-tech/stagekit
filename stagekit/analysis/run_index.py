@@ -18,7 +18,9 @@ from stagekit.analysis.scanner import scan_pipeline_runs
 logger = logging.getLogger(__name__)
 
 # 3: RunRecord.pinned + pins.yaml in the cache key (2026-10-08)
-CATALOG_VERSION = 3
+# 4: PipelineFields.recomputed_repro_hash; the formula version in the
+#    cache key (2026-11-04)
+CATALOG_VERSION = 4
 
 
 class RunIndex:
@@ -139,10 +141,14 @@ class RunIndex:
     def has_equivalent(self, cfg) -> bool:
         """Check if a completed pipeline run matching *cfg* exists.
 
-        Compares the canonical reproducibility hash of *cfg* against
-        hashes stored in (or computed from) existing run records. A run
-        whose hash was made by another formula version never matches
-        (``formula_versions`` counts them, so a caller can say why).
+        Compares today's reproducibility hash of *cfg* with each run's
+        ``_comparable_hash``: today's formula recomputed from the run's
+        stored config — not the hash stored with it, which is the identity
+        of its time. Recomputing finds the runs of an older formula, and
+        a stored hash of today's formula could still mislead: formula 3
+        reads the schema's defaults, and a run stored at an earlier
+        default hashes as if it ran at today's. Runs whose config cannot
+        be recomputed never match; ``incomparable_runs`` counts them.
         """
         from stagekit.analysis.repro_hash import compute_repro_hash
 
@@ -151,16 +157,16 @@ class RunIndex:
             r.run_type == "pipeline"
             and r.status == "success"
             and r.pipeline is not None
-            and r.pipeline.repro_hash == target
+            and _comparable_hash(r.pipeline) == target
             for r in self._records
         )
 
     def formula_versions(self) -> dict[int, int]:
-        """Successful pipeline runs per repro-hash formula version.
+        """Successful pipeline runs per formula version of their stored hash.
 
-        Runs of another version than today's ``REPRO_HASH_VERSION`` cannot
-        be found equivalent by ``has_equivalent``; this says how many.
-        Runs without a hash are not counted.
+        Which of them ``has_equivalent`` can still compare is another
+        question: ``incomparable_runs``. Runs without a hash are not
+        counted.
         """
         from collections import Counter
 
@@ -171,6 +177,26 @@ class RunIndex:
             for r in self._records
             if r.run_type == "pipeline" and r.status == "success"
             and r.pipeline is not None and r.pipeline.repro_hash
+        ))
+
+    def incomparable_runs(self) -> dict[int, int]:
+        """Successful runs ``has_equivalent`` cannot compare, per formula
+        version of their stored hash.
+
+        These are runs whose stored config carries no instrument snapshot
+        (stored before 2026-09-24) and whose hash is not today's formula:
+        an equivalent run among them is not found, its combo runs again.
+        """
+        from collections import Counter
+
+        from stagekit.analysis.repro_hash import repro_hash_version
+
+        return dict(Counter(
+            repro_hash_version(r.pipeline.repro_hash)
+            for r in self._records
+            if r.run_type == "pipeline" and r.status == "success"
+            and r.pipeline is not None and r.pipeline.repro_hash
+            and not _comparable_hash(r.pipeline)
         ))
 
     def latest_run(
@@ -244,7 +270,11 @@ class RunIndex:
         except (json.JSONDecodeError, OSError):
             return False
 
-        if catalog.get("version") != CATALOG_VERSION:
+        from stagekit.analysis.repro_hash import REPRO_HASH_VERSION
+
+        # recomputed_repro_hash is today's formula: another one re-scans.
+        if (catalog.get("version") != CATALOG_VERSION
+                or catalog.get("repro_hash_version") != REPRO_HASH_VERSION):
             return False
 
         stored_roots = catalog.get("scan_roots", {})
@@ -279,8 +309,11 @@ class RunIndex:
         """Persist catalog to disk."""
         stats = self._count_discoverable()
 
+        from stagekit.analysis.repro_hash import REPRO_HASH_VERSION
+
         catalog = {
             "version": CATALOG_VERSION,
+            "repro_hash_version": REPRO_HASH_VERSION,
             "scan_roots": {
                 "pipeline": {
                     "path": str(self._pipeline_root),
@@ -340,6 +373,22 @@ def _parse_datetime(value: str | datetime) -> datetime:
         except ValueError:
             continue
     raise ValueError(f"Cannot parse datetime: {value!r}")
+
+
+def _comparable_hash(p: PipelineFields) -> str:
+    """The hash of today's formula a run is compared by, or "" if none.
+
+    The recomputation from its stored config; failing that, its stored
+    hash if today's formula made it (a config written without an
+    instrument snapshot — only tests do that since 2026-09-24).
+    """
+    from stagekit.analysis.repro_hash import REPRO_HASH_VERSION, repro_hash_version
+
+    if p.recomputed_repro_hash:
+        return p.recomputed_repro_hash
+    if p.repro_hash and repro_hash_version(p.repro_hash) == REPRO_HASH_VERSION:
+        return p.repro_hash
+    return ""
 
 
 def _record_to_dict(r: RunRecord) -> dict:
