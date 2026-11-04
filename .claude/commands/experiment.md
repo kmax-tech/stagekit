@@ -11,7 +11,7 @@ The framework is a **DAG-based pipeline system** with declarative YAML configura
 **Core principle**: Configuration defines the experiment. Stages are reusable building blocks. Contracts catch errors before execution. Artifacts are content-addressed and namespaced.
 
 **Storage roles (one source of truth per question):**
-- **Comparing runs/configurations** happens exclusively via `output/` + `RunIndex` + `pipeline_summary.json`, keyed by `repro_hash`. The hash covers the config AND the instrument (prompt versions + parser ids of the pipeline's stages, snapshotted into `config_used.yaml`; NOTES.md 2026-09-24). `output/` is the run ledger and is disposable.
+- **Comparing runs/configurations** happens exclusively via `output/` + `RunIndex` + `pipeline_summary.json`, keyed by `repro_hash`. The hash covers the config AND the instrument (prompt versions + parser ids of the pipeline's stages, snapshotted into `config_used.yaml`; NOTES.md 2026-09-24). The hash names its formula (`v3-<sha256>`); `RunIndex` compares today's formula recomputed from each run's stored config, not the stored hash (NOTES.md 2026-11-04). `output/` is the run ledger and is disposable.
 - **`published/pins.yaml`** is the PUBLICATION layer: one pinned run per coordinate, the address a consumer YAML interpolates (`preload_artifacts: {key: pin:<coordinate>}`). The pin carries `run_dir`, `run_id`, `repro_hash` and a SHA-256 per artifact; the artifact is read from the run itself, nothing is copied. Never a comparison source. Pinning is an explicit act after a run (`python -m scripts.pin <run_dir> <coordinate>`; `--list` shows every pin's state); a missing pin is an error with candidates, never "the newest run". Pinned runs (`RunRecord.pinned`) are exempt from cleaning `output/`. Design: `docs/published-pins-statt-kopien.md`.
 
 ---
@@ -233,7 +233,9 @@ runtime), and a failure is always loud.
 
 9. **Respect run identity.** Any config field that cannot change the
    stage's output must be stripped in `repro_hash` (volatile lists) or
-   live outside the identity (meta). Backend-dependent behavior is
+   live outside the identity (meta). A schema field at its default and
+   one gone from the schema never enter (formula 3); changing a default
+   of one that does is a new formula version. Backend-dependent behavior is
    declared in `BACKEND_CAPABILITIES` next to the backend registry,
    never hardcoded elsewhere.
 

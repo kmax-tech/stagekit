@@ -704,3 +704,41 @@ comparison across the change will see the next run of these pipelines as
 new. No stage default is declared declaratively, so a preflight that
 rejects `value == default` would need a second home for the defaults —
 not built; the rule stays a review item.
+
+## 2026-11-04 — repro_hash formula 3: a field at its default and a field gone from the schema leave the hash
+
+**Problem:** A run composed today and the stored config of the run it
+reproduces hashed differently under formula 2, although they ran alike
+(item for item): the stored config carried model and pipeline fields
+removed from the schema since, the composed one carried fields added
+since at their empty defaults. Formula 2 takes every schema field a config
+carries, so every field added or removed re-keys all stored runs; the
+RunIndex compared stored hashes only and found none of them.
+
+**Solution:** Formula 3 (`REPRO_HASH_VERSION = 3`) keeps formula 2's
+sections and volatile lists and reduces each section to the keys that are
+fields of today's schema and differ from that field's default
+(`_identity_subset`). Formula 2 stays computable
+(`repro_hash_from_dict(cfg, version=2)`, frozen by a literal); formula 1
+cannot be. `RunIndex.has_equivalent` compares today's formula recomputed
+from each run's stored config (`PipelineFields.recomputed_repro_hash`),
+for runs whose config carries an instrument snapshot; the others are
+counted by `incomparable_runs()` and never match. Measured on a topic
+repo's 44 pins against today's composition of their combos: 35 of 42
+composable equal under formula 3, 5 under formula 2; the other seven are a
+stage renamed since and prompt texts changed since, two combos no longer
+exist.
+
+**Notes:** Why recompute rather than trust a stored hash of the same
+formula: formula 3 reads today's defaults. A run stored at a default
+since changed carries that value explicitly and hashes as if it ran at
+today's — its stored hash would equal a new run's at the new default,
+though they differ. Recomputing from the stored config sees the value;
+`tests/test_repro_hash_v3.py` freezes the defaults so that changing one
+is a deliberate new formula. Why only runs with an instrument snapshot
+(stored since 2026-09-24): for older ones today's registries would supply
+the prompt versions, and a prompt whose text changed since would match.
+The catalog carries the formula version and re-scans under another. Not
+covered: a stage option restated at its stage-code default (no stage
+declares its defaults, NOTES.md 2026-10-13) and a renamed stage or prompt
+— names are identity.
